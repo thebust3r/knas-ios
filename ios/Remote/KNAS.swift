@@ -73,6 +73,7 @@ final class KNAS: ObservableObject {
     @Published var toast: String?
     @Published var away = false
     @Published var lastError = ""
+    @Published var tab = 0
     @Published var loadedOnce = false
 
     private var retry: Task<Void, Never>?

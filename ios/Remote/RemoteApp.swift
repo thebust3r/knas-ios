@@ -31,10 +31,10 @@ struct Root: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             if knas.connected {
-                TabView {
-                    RemoteScreen().tabItem { Label("Remote", systemImage: "av.remote") }
-                    WhatsOn().tabItem { Label("What's On", systemImage: "list.bullet.rectangle") }
-                    More().tabItem { Label("More", systemImage: "ellipsis.circle") }
+                TabView(selection: $knas.tab) {
+                    RemoteScreen().tabItem { Label("Remote", systemImage: "av.remote") }.tag(0)
+                    WhatsOn().tabItem { Label("What's On", systemImage: "list.bullet.rectangle") }.tag(1)
+                    More().tabItem { Label("More", systemImage: "ellipsis.circle") }.tag(2)
                 }
                 .accentColor(gold)
             } else {
@@ -378,32 +378,84 @@ struct WhatsOn: View {
 
 // ------------------------------------------------------------ more: everything else from the phone page
 
+/// Keeps the More page's web view, so the Back button can use it.
+@MainActor
+final class MoreState: NSObject, ObservableObject, WKNavigationDelegate {
+    @Published var canGoBack = false
+    @Published var title = "More"
+    weak var web: WKWebView?
+    var openRemote: () -> Void = {}
+    var home: URL?
+    private var obs: [NSKeyValueObservation] = []
+
+    func attach(_ w: WKWebView) {
+        web = w
+        obs = [
+            w.observe(\.canGoBack, options: [.initial, .new]) { [weak self] w, _ in DispatchQueue.main.async { self?.canGoBack = w.canGoBack } },
+            w.observe(\.title, options: [.new]) { [weak self] w, _ in
+                let t = (w.title ?? "").trimmingCharacters(in: .whitespaces)
+                DispatchQueue.main.async { self?.title = (w.canGoBack && !t.isEmpty) ? t : "More" }
+            },
+        ]
+    }
+
+    func back() { web?.goBack() }
+    func goHome() { if let h = home { web?.load(URLRequest(url: h)) } }
+
+    // the remote page is already the Remote tab: send those links there instead of opening it again
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        let path = action.request.url?.path ?? ""
+        if path == "/remote" || path == "/remote.html" {
+            decisionHandler(.cancel)
+            openRemote()
+            return
+        }
+        decisionHandler(.allow)
+    }
+}
+
 struct More: View {
     @EnvironmentObject var knas: KNAS
+    @StateObject private var state = MoreState()
     var body: some View {
         NavigationView {
-            PhonePage(url: URL(string: "http://\(knas.address)/phone"))
-                .navigationTitle("More")
+            PhonePage(url: URL(string: "http://\(knas.address)/phone"), state: state)
+                .navigationTitle(state.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        if state.canGoBack {
+                            Button { state.back() } label: { Label("Back", systemImage: "chevron.backward").labelStyle(.titleAndIcon) }
+                        }
+                    }
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button("Address") { knas.disconnect() }
                     }
                 }
         }
         .navigationViewStyle(.stack)
+        .onAppear { state.openRemote = { knas.tab = 0 } }
     }
 }
 
 struct PhonePage: UIViewRepresentable {
     let url: URL?
+    let state: MoreState
     func makeUIView(context: Context) -> WKWebView {
         let cfg = WKWebViewConfiguration()
         cfg.allowsInlineMediaPlayback = true
         cfg.applicationNameForUserAgent = "KNASApp/ios-remote"
+        // hide the remote links and buttons on these pages: the Remote tab is the remote
+        let css = "a[href=\"/remote\"],a[href^=\"/remote?\"],a[href=\"/remote.html\"]{display:none!important}"
+        let js = "var s=document.createElement('style');s.textContent='\(css)';(document.head||document.documentElement).appendChild(s);"
+        cfg.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         let w = WKWebView(frame: .zero, configuration: cfg)
         w.isOpaque = false
         w.backgroundColor = .black
+        w.allowsBackForwardNavigationGestures = true      // swipe from the left edge to go back
+        w.navigationDelegate = state
+        state.home = url
+        state.attach(w)
         if let u = url { w.load(URLRequest(url: u)) }
         return w
     }
