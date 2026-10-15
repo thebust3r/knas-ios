@@ -22,6 +22,46 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
     var current = ""
     var finding = false
     var awayTimer: Timer?
+    var awayAddresses: [String] { prefs.stringArray(forKey: "away") ?? [] }
+
+    static func isTailscale(_ hp: String) -> Bool {
+        let host = hp.split(separator: ":").first.map(String.init) ?? hp
+        if host.hasSuffix(".ts.net") { return true }
+        let p = host.split(separator: ".").compactMap { Int($0) }
+        return p.count == 4 && p[0] == 100 && (64...127).contains(p[1])
+    }
+
+    /// KNAS tells us its away-from-home (Tailscale) addresses while we're home; remember them.
+    func learnAway(_ hp: String) {
+        guard let url = URL(string: "http://\(hp)/api/version") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            struct V: Decodable { let away: [String]? }
+            guard let d = data, let v = try? JSONDecoder().decode(V.self, from: d), let list = v.away, !list.isEmpty else { return }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                var all = self.awayAddresses
+                for a in list where !all.contains(a) { all.append(a) }
+                self.prefs.set(Array(all.prefix(6)), forKey: "away")
+            }
+        }.resume()
+    }
+
+    /// Lost KNAS: try home, then Tailscale; otherwise show "you're away from home".
+    func recover() {
+        Task { @MainActor in
+            if let hp = await reachable() { if hp != current || web.url == nil { display(hp) } else { web.reload() } }
+            else { goneAway() }
+        }
+    }
+
+    /// Home first, then the away addresses.
+    func reachable() async -> String? {
+        var tries: [String] = []
+        if !saved.isEmpty { tries.append(saved) }
+        for a in awayAddresses where !tries.contains(a) { tries.append(a) }
+        for hp in tries { if await MainViewController.isKNAS(hp, timeout: hp == saved ? 3 : 5) { return hp } }
+        return nil
+    }
 
     /// Not on Wi-Fi, or on a different network than KNAS (like at work or on cellular).
     static func awayFrom(_ hp: String) -> Bool {
@@ -34,12 +74,14 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
     /// "You're away from home": keep checking, and tune back in by itself when you're home.
     func goneAway() {
         web.isHidden = true
-        showSetup("You're away from home", "Join your home Wi-Fi to watch KNAS. It tunes back in by itself when you're back.")
+        showSetup("You're away from home", awayAddresses.isEmpty
+            ? "Join your home Wi-Fi to watch KNAS. It tunes back in by itself when you're back."
+            : "Join your home Wi-Fi, or turn on Tailscale, to watch KNAS. It tunes back in by itself.")
         awayTimer?.invalidate()
         awayTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             guard let self = self, !self.saved.isEmpty, !self.setup.isHidden else { return }
             Task { @MainActor in
-                if await MainViewController.isKNAS(self.saved, timeout: 3) { self.awayTimer?.invalidate(); self.open(self.saved) }
+                if let hp = await self.reachable() { self.awayTimer?.invalidate(); self.display(hp) }
             }
         }
     }
@@ -219,17 +261,33 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
             let ok = await MainViewController.isKNAS(hp, timeout: 5)
             spinner.stopAnimating()
             guard ok else {
-                if hp == saved && MainViewController.awayFrom(hp) { goneAway(); return }
+                if hp == saved || awayAddresses.contains(hp) {
+                    if let other = await reachable(), other != hp { display(other); return }     // away from home: Tailscale
+                    if MainViewController.awayFrom(hp) || MainViewController.isTailscale(hp) { goneAway(); return }
+                }
                 showSetup("Can't reach KNAS", "Nothing answered at \(hp). Check that KNAS is running, that this phone is on your home Wi-Fi, and that the address is right.")
                 return
             }
             awayTimer?.invalidate()
-            saved = hp
+            display(hp)
+        }
+    }
+
+    /// Show KNAS from this address (home, or Tailscale when away).
+    func display(_ hp: String) {
+            awayTimer?.invalidate()
+            if MainViewController.isTailscale(hp) {
+                var list = awayAddresses
+                if !list.contains(hp) { list.insert(hp, at: 0); prefs.set(list, forKey: "away") }
+                if saved.isEmpty { saved = hp }
+            } else {
+                saved = hp
+                learnAway(hp)
+            }
             current = hp
             setup.isHidden = true
             web.isHidden = false
             if let url = URL(string: "http://\(hp)\(path)") { web.load(URLRequest(url: url)) }
-        }
     }
 
     /// The phone's own address on Wi-Fi, like 192.168.1.23
@@ -292,7 +350,7 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     func loadFailed(_ error: Error) {
         if (error as NSError).code == NSURLErrorCancelled { return }
-        if MainViewController.awayFrom(current.isEmpty ? saved : current) { goneAway(); return }
+        if MainViewController.awayFrom(current.isEmpty ? saved : current) || MainViewController.isTailscale(current) { recover(); return }
         showSetup("Can't reach KNAS", "Couldn't open \(current). Check that KNAS is running and this phone is on your home Wi-Fi.")
     }
 
@@ -325,7 +383,7 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     @objc func cameBack() {
         // back from the background: make sure the page is still alive, and notice if you left home
-        if !saved.isEmpty && MainViewController.awayFrom(saved) { goneAway(); return }
+        if !saved.isEmpty && MainViewController.awayFrom(saved) && !MainViewController.isTailscale(current) { recover(); return }
         if !web.isHidden && web.url == nil { open(current.isEmpty ? saved : current) }
     }
 

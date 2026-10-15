@@ -120,7 +120,51 @@ final class KNAS: ObservableObject {
     }
 
     func start() {
-        if address.isEmpty { Task { await find() } } else { Task { await connect(address) } }
+        if address.isEmpty { Task { await find() } } else { Task { await connect(home.isEmpty ? address : home) } }
+    }
+
+    // ---------------- home address + away addresses (Tailscale)
+
+    /// The address at home (saved), and addresses that reach KNAS from away (Tailscale), which KNAS tells us while we're home.
+    var home: String { UserDefaults.standard.string(forKey: "address") ?? "" }
+    var awayAddresses: [String] { UserDefaults.standard.stringArray(forKey: "away") ?? [] }
+
+    static func isTailscale(_ hp: String) -> Bool {
+        let host = hp.split(separator: ":").first.map(String.init) ?? hp
+        if host.hasSuffix(".ts.net") { return true }
+        let p = host.split(separator: ".").compactMap { Int($0) }
+        return p.count == 4 && p[0] == 100 && (64...127).contains(p[1])
+    }
+
+    /// Ask KNAS for its away-from-home addresses and remember them.
+    func learnAway(_ hp: String) async {
+        struct V: Decodable { let away: [String]? }
+        guard let url = URL(string: "http://\(hp)/api/version"),
+              let r = try? await session.data(from: url),
+              let v = try? JSONDecoder().decode(V.self, from: r.0) else { return }
+        var list = awayAddresses
+        for a in v.away ?? [] where !list.contains(a) { list.append(a) }
+        UserDefaults.standard.set(Array(list.prefix(6)), forKey: "away")
+    }
+
+    /// Home first, then the away addresses. Returns the one that answered.
+    func reachable() async -> String? {
+        var tries: [String] = []
+        if !home.isEmpty { tries.append(home) }
+        for a in awayAddresses where !tries.contains(a) { tries.append(a) }
+        for hp in tries { if await KNAS.isKNAS(hp, timeout: hp == home ? 3 : 5) { return hp } }
+        return nil
+    }
+
+    private func use(_ hp: String, note: Bool) {
+        let wasAway = away
+        address = hp
+        away = false
+        connected = true
+        misses = 0
+        startPolling()
+        if KNAS.isTailscale(hp) { if note || wasAway { show("Connected through Tailscale") } }
+        else { if wasAway { show("Welcome home!") }; Task { await learnAway(hp) } }
     }
 
     func connect(_ input: String) async {
@@ -131,19 +175,24 @@ final class KNAS: ObservableObject {
         setupTitle = "Connecting…"
         setupMessage = "Checking \(hp)…"
         if await KNAS.isKNAS(hp, timeout: 5) {
-            address = hp
-            UserDefaults.standard.set(hp, forKey: "address")
-            connected = true
-            startPolling()
-        } else {
-            connected = false
-            if !address.isEmpty && hp == address && KNAS.awayFrom(hp) {
-                goneAway()
+            if KNAS.isTailscale(hp) {                   // typed a Tailscale address: keep it as the away address
+                var list = awayAddresses
+                if !list.contains(hp) { list.insert(hp, at: 0) }
+                UserDefaults.standard.set(list, forKey: "away")
+                if home.isEmpty { UserDefaults.standard.set(hp, forKey: "address") }
             } else {
-                setupTitle = "Can't reach KNAS"
-                setupMessage = "Nothing answered at \(hp). Check that KNAS is running, that this phone is on your home Wi-Fi, and that the address is right."
+                UserDefaults.standard.set(hp, forKey: "address")
             }
+            use(hp, note: false)
+            return
         }
+        connected = false
+        if hp == home || awayAddresses.contains(hp) {
+            if let other = await reachable() { use(other, note: true); return }   // away from home: Tailscale
+            if KNAS.awayFrom(hp) || KNAS.isTailscale(hp) { goneAway(); return }
+        }
+        setupTitle = "Can't reach KNAS"
+        setupMessage = "Nothing answered at \(hp). Check that KNAS is running, that this phone is on your home Wi-Fi, and that the address is right."
     }
 
     /// Not on Wi-Fi, or on a different network than KNAS (like at work or on cellular).
@@ -154,30 +203,25 @@ final class KNAS: ObservableObject {
         return b.count == 3 && a != b
     }
 
-    /// Show "you're away from home" and keep checking quietly; reconnect by itself when back home.
+    /// Show "you're away from home" and keep checking quietly; reconnect by itself when back home or when Tailscale comes on.
     func goneAway() {
         poller?.cancel()
         connected = false
         away = true
         setupTitle = "You're away from home"
-        setupMessage = "Join your home Wi-Fi to control your TV. The remote reconnects by itself when you're back."
+        setupMessage = awayAddresses.isEmpty
+            ? "Join your home Wi-Fi to control your TV. The remote reconnects by itself when you're back."
+            : "Join your home Wi-Fi, or turn on Tailscale, to control your TV. The remote reconnects by itself."
         retry?.cancel()
         retry = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
-                guard let self = self, !self.address.isEmpty else { return }
-                if await KNAS.isKNAS(self.address, timeout: 3) {
-                    self.away = false
-                    self.connected = true
-                    self.misses = 0
-                    self.startPolling()
-                    self.show("Welcome home!")
-                    return
-                }
-                if !KNAS.awayFrom(self.address) {          // home again, but KNAS isn't answering
+                guard let self = self, !(self.home.isEmpty && self.awayAddresses.isEmpty) else { return }
+                if let hp = await self.reachable() { self.use(hp, note: true); return }
+                if !self.home.isEmpty && !KNAS.awayFrom(self.home) {          // home again, but KNAS isn't answering
                     self.away = false
                     self.setupTitle = "Can't reach KNAS"
-                    self.setupMessage = "You're on your home network, but KNAS isn't answering at \(self.address). Check that it's running."
+                    self.setupMessage = "You're on your home network, but KNAS isn't answering at \(self.home). Check that it's running."
                 }
             }
         }
@@ -269,10 +313,13 @@ final class KNAS: ObservableObject {
         } catch {
             lastError = (error as? DecodingError).map { _ in "KNAS sent something the app didn't understand." } ?? error.localizedDescription
             misses += 1
-            if misses >= 2 && connected {                  // lost KNAS for about 5 seconds
+            if misses >= 2 && connected {                  // lost KNAS for about 5 seconds: try home and Tailscale
                 misses = 0
-                if KNAS.awayFrom(address) { goneAway() }
-                else if !(await KNAS.isKNAS(address, timeout: 3)) {
+                if let hp = await reachable() {
+                    if hp != address { use(hp, note: true) }
+                } else if KNAS.awayFrom(home.isEmpty ? address : home) || KNAS.isTailscale(address) {
+                    goneAway()
+                } else {
                     poller?.cancel()
                     connected = false
                     setupTitle = "Can't reach KNAS"
