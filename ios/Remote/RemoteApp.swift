@@ -19,7 +19,7 @@ struct KNASRemoteApp: App {
                 .preferredColorScheme(.dark)
                 .onAppear { knas.start() }
                 .onChange(of: phase) { p in
-                    if p == .active, knas.connected { knas.startPolling() }
+                    if p == .active { if knas.connected { knas.startPolling() } else if knas.away || !knas.address.isEmpty { Task { await knas.connect(knas.address) } } }
                     if p == .background { knas.stopPolling() }
                 }
         }
@@ -66,6 +66,10 @@ struct SetupScreen: View {
                 Text("KNAS Remote").font(.system(size: 42, weight: .heavy)).italic().foregroundColor(gold)
                 Text(knas.setupTitle).font(.system(size: 24, weight: .bold))
                 Text(knas.setupMessage).font(.system(size: 16)).foregroundColor(Color(white: 0.88)).multilineTextAlignment(.center)
+                if knas.away {
+                    Image(systemName: "house.fill").font(.system(size: 54)).foregroundColor(gold).padding(.top, 4)
+                    HStack(spacing: 8) { ProgressView(); Text("Waiting for your home network…").font(.system(size: 14)).foregroundColor(edge) }
+                }
                 if knas.finding { ProgressView().scaleEffect(1.4).padding(6) }
                 TextField("192.168.1.50", text: $typed)
                     .keyboardType(.decimalPad)

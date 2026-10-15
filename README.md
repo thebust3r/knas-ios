@@ -6,6 +6,7 @@ Two apps:
 - **KNAS Remote**: a native remote: TV picker, D-pad, channel and volume rockers, number pad, What's On list, Turn off all TVs, and everything else from the phone page under More.
 
 Both find KNAS on your home Wi-Fi by themselves the first time (or type your NAS's address).
+Away from home (or not on Wi-Fi), they say so and reconnect by themselves when you get back.
 Hold **two fingers** on the screen for a second to open the menu: reload, change address, AirPlay.
 
 ## Installing with AltStore

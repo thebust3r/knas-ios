@@ -21,6 +21,28 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
     var current = ""
     var finding = false
+    var awayTimer: Timer?
+
+    /// Not on Wi-Fi, or on a different network than KNAS (like at work or on cellular).
+    static func awayFrom(_ hp: String) -> Bool {
+        guard let me = wifiAddress() else { return true }
+        let host = hp.split(separator: ":").first.map(String.init) ?? hp
+        let a = me.split(separator: ".").prefix(3), b = host.split(separator: ".").prefix(3)
+        return b.count == 3 && a != b
+    }
+
+    /// "You're away from home": keep checking, and tune back in by itself when you're home.
+    func goneAway() {
+        web.isHidden = true
+        showSetup("You're away from home", "Join your home Wi-Fi to watch KNAS. It tunes back in by itself when you're back.")
+        awayTimer?.invalidate()
+        awayTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            guard let self = self, !self.saved.isEmpty, !self.setup.isHidden else { return }
+            Task { @MainActor in
+                if await MainViewController.isKNAS(self.saved, timeout: 3) { self.awayTimer?.invalidate(); self.open(self.saved) }
+            }
+        }
+    }
 
     var web: WKWebView!
     let setup = UIView()
@@ -195,9 +217,11 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
             let ok = await MainViewController.isKNAS(hp, timeout: 5)
             spinner.stopAnimating()
             guard ok else {
+                if hp == saved && MainViewController.awayFrom(hp) { goneAway(); return }
                 showSetup("Can't reach KNAS", "Nothing answered at \(hp). Check that KNAS is running, that this phone is on your home Wi-Fi, and that the address is right.")
                 return
             }
+            awayTimer?.invalidate()
             saved = hp
             current = hp
             setup.isHidden = true
@@ -266,6 +290,7 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     func loadFailed(_ error: Error) {
         if (error as NSError).code == NSURLErrorCancelled { return }
+        if MainViewController.awayFrom(current.isEmpty ? saved : current) { goneAway(); return }
         showSetup("Can't reach KNAS", "Couldn't open \(current). Check that KNAS is running and this phone is on your home Wi-Fi.")
     }
 
@@ -297,7 +322,8 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     @objc func cameBack() {
-        // back from the background: make sure the page is still alive
+        // back from the background: make sure the page is still alive, and notice if you left home
+        if !saved.isEmpty && MainViewController.awayFrom(saved) { goneAway(); return }
         if !web.isHidden && web.url == nil { open(current.isEmpty ? saved : current) }
     }
 

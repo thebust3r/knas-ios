@@ -47,6 +47,10 @@ final class KNAS: ObservableObject {
     @Published var setupTitle = "Where's KNAS?"
     @Published var setupMessage = "Type your NAS's address, or let the app look for it."
     @Published var toast: String?
+    @Published var away = false
+
+    private var retry: Task<Void, Never>?
+    private var misses = 0
 
     private var poller: Task<Void, Never>?
     private let session: URLSession = {
@@ -95,6 +99,8 @@ final class KNAS: ObservableObject {
     func connect(_ input: String) async {
         let hp = KNAS.clean(input)
         guard !hp.isEmpty else { setupTitle = "Where's KNAS?"; setupMessage = "Type your NAS's address, like 192.168.1.50."; return }
+        retry?.cancel()
+        away = false
         setupTitle = "Connecting…"
         setupMessage = "Checking \(hp)…"
         if await KNAS.isKNAS(hp, timeout: 5) {
@@ -104,13 +110,56 @@ final class KNAS: ObservableObject {
             startPolling()
         } else {
             connected = false
-            setupTitle = "Can't reach KNAS"
-            setupMessage = "Nothing answered at \(hp). Check that KNAS is running, that this phone is on your home Wi-Fi, and that the address is right."
+            if !address.isEmpty && hp == address && KNAS.awayFrom(hp) {
+                goneAway()
+            } else {
+                setupTitle = "Can't reach KNAS"
+                setupMessage = "Nothing answered at \(hp). Check that KNAS is running, that this phone is on your home Wi-Fi, and that the address is right."
+            }
+        }
+    }
+
+    /// Not on Wi-Fi, or on a different network than KNAS (like at work or on cellular).
+    static func awayFrom(_ hp: String) -> Bool {
+        guard let me = wifiAddress() else { return true }
+        let host = hp.split(separator: ":").first.map(String.init) ?? hp
+        let a = me.split(separator: ".").prefix(3), b = host.split(separator: ".").prefix(3)
+        return b.count == 3 && a != b
+    }
+
+    /// Show "you're away from home" and keep checking quietly; reconnect by itself when back home.
+    func goneAway() {
+        poller?.cancel()
+        connected = false
+        away = true
+        setupTitle = "You're away from home"
+        setupMessage = "Join your home Wi-Fi to control your TV. The remote reconnects by itself when you're back."
+        retry?.cancel()
+        retry = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard let self = self, !self.address.isEmpty else { return }
+                if await KNAS.isKNAS(self.address, timeout: 3) {
+                    self.away = false
+                    self.connected = true
+                    self.misses = 0
+                    self.startPolling()
+                    self.show("Welcome home!")
+                    return
+                }
+                if !KNAS.awayFrom(self.address) {          // home again, but KNAS isn't answering
+                    self.away = false
+                    self.setupTitle = "Can't reach KNAS"
+                    self.setupMessage = "You're on your home network, but KNAS isn't answering at \(self.address). Check that it's running."
+                }
+            }
         }
     }
 
     func disconnect() {
         poller?.cancel()
+        retry?.cancel()
+        away = false
         connected = false
         setupTitle = "Change address"
         setupMessage = "Type your NAS's address, or let the app look for it."
@@ -186,8 +235,21 @@ final class KNAS: ObservableObject {
         do {
             let (data, _) = try await session.data(from: url)
             let list = try JSONDecoder().decode(TVList.self, from: data)
+            misses = 0
             if list.tvs != tvs { tvs = list.tvs }
-        } catch { }
+        } catch {
+            misses += 1
+            if misses >= 2 && connected {                  // lost KNAS for about 5 seconds
+                misses = 0
+                if KNAS.awayFrom(address) { goneAway() }
+                else if !(await KNAS.isKNAS(address, timeout: 3)) {
+                    poller?.cancel()
+                    connected = false
+                    setupTitle = "Can't reach KNAS"
+                    setupMessage = "KNAS stopped answering at \(address). Check that it's running, then tap Connect."
+                }
+            }
+        }
     }
 
     func refreshOnNow() async {
