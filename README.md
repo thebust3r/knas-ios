@@ -9,6 +9,12 @@ Both find KNAS on your home Wi-Fi by themselves the first time (or type your NAS
 Away from home, they use Tailscale by themselves if it's on (KNAS tells the apps its Tailscale address while you're home). Otherwise they say you're away and reconnect when you get back.
 Tap the screen and a ⚙ button shows in the top corner for a few seconds (or hold two fingers on the screen): reload, change address, AirPlay. While it's tuning in, a Change address button is right there too.
 
+## Updates without downloading files
+
+Add the KNAS source to AltStore once: in AltStore, go to **Sources** (or Browse → Sources), tap **+**, and paste
+`https://raw.githubusercontent.com/thebust3r/knas-ios/main/altstore-source.json`
+From then on, new builds show an **Update** button in AltStore's My Apps, and the apps tell you when one is ready.
+
 ## Installing with AltStore
 
 1. Set up AltStore on your iPhone and PC (altstore.io has the steps: install AltServer on the PC, then install AltStore to the phone).

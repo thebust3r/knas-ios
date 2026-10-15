@@ -111,6 +111,11 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
     override var prefersHomeIndicatorAutoHidden: Bool { isTV }
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { UpdateCheck.run() }   // a newer build in AltStore?
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black

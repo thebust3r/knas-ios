@@ -17,7 +17,10 @@ struct KNASRemoteApp: App {
             Root()
                 .environmentObject(knas)
                 .preferredColorScheme(.dark)
-                .onAppear { knas.start() }
+                .onAppear {
+                    knas.start()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { UpdateCheck.run() }   // a newer build in AltStore?
+                }
                 .onChange(of: phase) { p in
                     if p == .active { if knas.connected { knas.startPolling() } else if knas.away || !knas.address.isEmpty { Task { await knas.connect(knas.address) } } }
                     if p == .background { knas.stopPolling() }

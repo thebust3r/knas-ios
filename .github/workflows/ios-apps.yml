@@ -68,3 +68,13 @@ jobs:
         run: |
           gh release create "test-${{ github.run_number }}" dist/*.ipa --repo "$GITHUB_REPOSITORY" \
             --title "iPhone test build ${{ github.run_number }}" --notes "Test build. Install both .ipa files with AltStore (see the README)." --latest
+
+      - name: Update the AltStore source (test repo only)
+        if: github.event.repository.name == 'knas-ios'
+        run: |
+          python3 .github/scripts/altstore_source.py "test-${{ github.run_number }}" "${{ steps.v.outputs.version }}" "${{ github.run_number }}" dist
+          git config user.name thebust3r
+          git config user.email thebust3r@users.noreply.github.com
+          git add altstore-source.json
+          git commit -m "AltStore source: build ${{ github.run_number }}" || exit 0
+          git pull --rebase -q origin main && git push -q origin HEAD:main
