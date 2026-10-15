@@ -49,6 +49,9 @@ jobs:
           for pair in "KNAS42:KNAS-42-iPhone" "KNASRemote:KNAS-Remote-iPhone"; do
             t=${pair%%:*}; n=${pair##*:}
             rm -rf Payload && mkdir Payload && cp -R "ios/build/Release-iphoneos/$t.app" Payload/
+            # a basic signature with an entitlements section: AltStore and Sideloadly read it, then sign the app with your Apple ID
+            codesign --force --sign - --timestamp=none --entitlements ios/entitlements.plist "Payload/$t.app"
+            codesign -d --entitlements - "Payload/$t.app" | head -20
             zip -qry "dist/$n-$v.ipa" Payload
           done
           ls -la dist
