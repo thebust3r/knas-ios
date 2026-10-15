@@ -113,8 +113,23 @@ struct RemoteScreen: View {
                 VStack(spacing: 18) {
                     header
                     if knas.selected == nil {
-                        Text("No TVs are on.\nOpen KNAS on a TV, and it shows up here.")
-                            .multilineTextAlignment(.center).foregroundColor(Color(white: 0.8)).padding(.top, 30)
+                        VStack(spacing: 10) {
+                            if !knas.loadedOnce && knas.lastError.isEmpty { ProgressView(); Text("Looking for your TVs…").foregroundColor(Color(white: 0.8)) }
+                            else if !knas.lastError.isEmpty {
+                                Text("Couldn't get the TV list").font(.system(size: 18, weight: .bold))
+                                Text(knas.lastError).font(.system(size: 14)).foregroundColor(Color(white: 0.75)).multilineTextAlignment(.center)
+                            } else {
+                                Text("No TVs are on right now").font(.system(size: 18, weight: .bold))
+                                Text("Open KNAS on a TV (the cable box page or a KNAS app) and it shows up here within a few seconds.")
+                                    .font(.system(size: 14)).foregroundColor(Color(white: 0.75)).multilineTextAlignment(.center)
+                                let off = knas.tvs.filter { !$0.on }
+                                if !off.isEmpty {
+                                    Text("Known TVs (off): " + off.map { $0.name }.joined(separator: ", "))
+                                        .font(.system(size: 13)).foregroundColor(Color(white: 0.6)).multilineTextAlignment(.center).padding(.top, 4)
+                                }
+                            }
+                        }
+                        .padding(.top, 30)
                     } else {
                         HStack(spacing: 12) {
                             Pill("Back", "arrow.uturn.backward") { knas.press("back") }

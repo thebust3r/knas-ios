@@ -66,7 +66,7 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
         cfg.mediaTypesRequiringUserActionForPlayback = []     // channels start by themselves, like a TV
         cfg.allowsAirPlayForMediaPlayback = true
         cfg.applicationNameForUserAgent = "KNASApp/ios"       // the cable box skips its own full-screen request
-        web = WKWebView(frame: view.bounds, configuration: cfg)
+        web = FullScreenWebView(frame: view.bounds, configuration: cfg)
         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         web.navigationDelegate = self
         web.uiDelegate = self
@@ -75,6 +75,8 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
         web.scrollView.backgroundColor = .black
         web.scrollView.contentInsetAdjustmentBehavior = isTV ? .never : .automatic
         web.scrollView.bounces = !isTV
+        if isTV { web.scrollView.isScrollEnabled = false }   // swipes go to the cable box (channels, guide)
+        if #available(iOS 15.0, *) { web.underPageBackgroundColor = .black }
         web.isHidden = true
         view.addSubview(web)
 
@@ -370,4 +372,9 @@ private extension UIFont {
         let d = fontDescriptor.addingAttributes([.traits: traits])
         return UIFont(descriptor: d, size: pointSize)
     }
+}
+
+/// The cable box uses the whole screen, right up to the top edge (no gray strip for the notch or status bar).
+final class FullScreenWebView: WKWebView {
+    override var safeAreaInsets: UIEdgeInsets { .zero }
 }

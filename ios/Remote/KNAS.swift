@@ -21,6 +21,30 @@ struct TV: Decodable, Identifiable, Equatable {
         list.compactMap { $0.count >= 2 && !hidden.contains($0[0]) ? Channel(num: $0[0], name: $0[1]) : nil }
     }
     var volume: Double? { Double(vol) }
+
+    enum K: String, CodingKey { case id, name, on, ch, chname, show, list, hidden, vol, muted, asleep }
+
+    // forgiving: a missing field or a number where text was expected doesn't throw the whole list away
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: K.self)
+        func text(_ k: K) -> String {
+            if let s = try? c.decode(String.self, forKey: k) { return s }
+            if let i = try? c.decode(Int.self, forKey: k) { return String(i) }
+            if let x = try? c.decode(Double.self, forKey: k) { return String(x) }
+            return ""
+        }
+        func flag(_ k: K) -> Bool {
+            if let b = try? c.decode(Bool.self, forKey: k) { return b }
+            return ["1", "true", "True"].contains(text(k))
+        }
+        id = text(.id)
+        name = text(.name).isEmpty ? "TV" : text(.name)
+        on = flag(.on)
+        ch = text(.ch); chname = text(.chname); show = text(.show); vol = text(.vol)
+        muted = flag(.muted); asleep = flag(.asleep)
+        hidden = (try? c.decode([String].self, forKey: .hidden)) ?? []
+        if let l = try? c.decode([[String]].self, forKey: .list) { list = l } else { list = [] }
+    }
 }
 
 struct Channel: Identifiable, Hashable { let num: String; let name: String; var id: String { num } }
@@ -48,6 +72,8 @@ final class KNAS: ObservableObject {
     @Published var setupMessage = "Type your NAS's address, or let the app look for it."
     @Published var toast: String?
     @Published var away = false
+    @Published var lastError = ""
+    @Published var loadedOnce = false
 
     private var retry: Task<Void, Never>?
     private var misses = 0
@@ -236,8 +262,11 @@ final class KNAS: ObservableObject {
             let (data, _) = try await session.data(from: url)
             let list = try JSONDecoder().decode(TVList.self, from: data)
             misses = 0
+            lastError = ""
+            loadedOnce = true
             if list.tvs != tvs { tvs = list.tvs }
         } catch {
+            lastError = (error as? DecodingError).map { _ in "KNAS sent something the app didn't understand." } ?? error.localizedDescription
             misses += 1
             if misses >= 2 && connected {                  // lost KNAS for about 5 seconds
                 misses = 0
