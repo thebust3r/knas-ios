@@ -15,6 +15,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
 
       - name: Version
         id: v
@@ -76,5 +78,6 @@ jobs:
           git config user.name thebust3r
           git config user.email thebust3r@users.noreply.github.com
           git add altstore-source.json
-          git commit -m "AltStore source: build ${{ github.run_number }}" || exit 0
-          git pull --rebase -q origin main && git push -q origin HEAD:main
+          git commit -q -m "AltStore source: build ${{ github.run_number }}" || exit 0
+          git push origin HEAD:refs/heads/main 2>&1 | tail -3 || true
+          for i in 1 2 3; do git push -q origin HEAD:refs/heads/main 2>/dev/null && break; git fetch -q --depth=5 origin main && git rebase -q origin/main || true; done
