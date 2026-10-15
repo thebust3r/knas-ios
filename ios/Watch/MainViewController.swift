@@ -6,7 +6,7 @@ import AVKit
 ///   "tv"     → KNAS 42: the cable box full screen (/tv)
 ///   "remote" → KNAS Remote: the phone remote and menu (/phone)
 /// Hold two fingers on the screen for a second to open the app's menu.
-final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, UITextFieldDelegate {
+final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate {
 
     static let port = 8642
     let mode = (Bundle.main.object(forInfoDictionaryKey: "KNASMode") as? String) ?? "tv"
@@ -54,13 +54,25 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
         }
     }
 
-    /// Home first, then the away addresses.
+    /// Tries home and the away (Tailscale) addresses at the same time. Home wins when it answers.
     func reachable() async -> String? {
         var tries: [String] = []
         if !saved.isEmpty { tries.append(saved) }
         for a in awayAddresses where !tries.contains(a) { tries.append(a) }
-        for hp in tries { if await MainViewController.isKNAS(hp, timeout: hp == saved ? 3 : 5) { return hp } }
-        return nil
+        if tries.isEmpty { return nil }
+        let home = saved
+        return await withTaskGroup(of: (String, Bool).self) { group -> String? in
+            for hp in tries {
+                group.addTask { (hp, await MainViewController.isKNAS(hp, timeout: hp == home ? 2.5 : 6)) }
+            }
+            var homeDone = home.isEmpty, alt: String?
+            for await (hp, ok) in group {
+                if hp == home { homeDone = true; if ok { group.cancelAll(); return hp } }
+                else if ok && alt == nil { alt = hp }
+                if homeDone, let a = alt { group.cancelAll(); return a }
+            }
+            return alt
+        }
     }
 
     /// Not on Wi-Fi, or on a different network than KNAS (like at work or on cellular).
@@ -126,9 +138,11 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
         hold.numberOfTouchesRequired = 2
         hold.minimumPressDuration = 0.8
         hold.cancelsTouchesInView = false
+        hold.delegate = self
         view.addGestureRecognizer(hold)
 
         buildSetup()
+        buildOverlays()
         NotificationCenter.default.addObserver(self, selector: #selector(cameBack), name: UIApplication.willEnterForegroundNotification, object: nil)
 
         if saved.isEmpty {
@@ -257,14 +271,16 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
         if hp.isEmpty { showSetup("Where's KNAS?", "Type your NAS's address, like 192.168.1.50."); return }
         field.text = MainViewController.shortAddress(hp)
         spinner.startAnimating()
+        showTuning("Tuning in…")
         Task { @MainActor in
+            if hp == saved || awayAddresses.contains(hp) {                 // home or Tailscale, whichever answers
+                if let r = await reachable() { spinner.stopAnimating(); display(r); return }
+                spinner.stopAnimating()
+                if MainViewController.awayFrom(hp) || MainViewController.isTailscale(hp) || !awayAddresses.isEmpty { goneAway(); return }
+            }
             let ok = await MainViewController.isKNAS(hp, timeout: 5)
             spinner.stopAnimating()
             guard ok else {
-                if hp == saved || awayAddresses.contains(hp) {
-                    if let other = await reachable(), other != hp { display(other); return }     // away from home: Tailscale
-                    if MainViewController.awayFrom(hp) || MainViewController.isTailscale(hp) { goneAway(); return }
-                }
                 showSetup("Can't reach KNAS", "Nothing answered at \(hp). Check that KNAS is running, that this phone is on your home Wi-Fi, and that the address is right.")
                 return
             }
@@ -287,7 +303,101 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
             current = hp
             setup.isHidden = true
             web.isHidden = false
+            showTuning(MainViewController.isTailscale(hp) ? "Tuning in through Tailscale…" : "Tuning in…")
             if let url = URL(string: "http://\(hp)\(path)") { web.load(URLRequest(url: url)) }
+    }
+
+    // ------------------------------------------------------------ "tuning in" card and the settings button
+
+    let tuning = UIView()
+    let tuningLabel = UILabel()
+    let gear = UIButton(type: .system)
+    var gearTimer: Timer?
+
+    func buildOverlays() {
+        tuning.backgroundColor = .black
+        tuning.frame = view.bounds
+        tuning.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        tuning.isHidden = true
+        let logo = UILabel()
+        logo.text = "KNAS 42"
+        logo.font = UIFont.italicSystemFont(ofSize: 40).withWeight(.heavy)
+        logo.textColor = UIColor(red: 1, green: 0.82, blue: 0.23, alpha: 1)
+        let wheel = UIActivityIndicatorView(style: .large)
+        wheel.color = .white
+        wheel.startAnimating()
+        tuningLabel.textColor = UIColor(red: 0.87, green: 0.9, blue: 1, alpha: 1)
+        tuningLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        let change = UIButton(type: .system)
+        change.setTitle("Change address", for: .normal)
+        change.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        change.setTitleColor(UIColor(red: 0.61, green: 0.72, blue: 1, alpha: 1), for: .normal)
+        change.addTarget(self, action: #selector(changeAddress), for: .touchUpInside)
+        let st = UIStackView(arrangedSubviews: [logo, wheel, tuningLabel, change])
+        st.axis = .vertical
+        st.alignment = .center
+        st.spacing = 18
+        st.translatesAutoresizingMaskIntoConstraints = false
+        tuning.addSubview(st)
+        NSLayoutConstraint.activate([st.centerXAnchor.constraint(equalTo: tuning.centerXAnchor), st.centerYAnchor.constraint(equalTo: tuning.centerYAnchor)])
+        view.addSubview(tuning)
+
+        // a settings button in the corner: shows for a few seconds after you tap the screen
+        gear.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)), for: .normal)
+        gear.tintColor = .white
+        gear.backgroundColor = UIColor(white: 0, alpha: 0.55)
+        gear.layer.cornerRadius = 22
+        gear.alpha = 0
+        gear.translatesAutoresizingMaskIntoConstraints = false
+        gear.addTarget(self, action: #selector(gearTapped), for: .touchUpInside)
+        view.addSubview(gear)
+        NSLayoutConstraint.activate([
+            gear.widthAnchor.constraint(equalToConstant: 44), gear.heightAnchor.constraint(equalToConstant: 44),
+            gear.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            gear.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+        ])
+        let tap = UITapGestureRecognizer(target: self, action: #selector(screenTapped))
+        tap.cancelsTouchesInView = false
+        tap.delegate = self
+        view.addGestureRecognizer(tap)
+    }
+
+    func showTuning(_ text: String) {
+        tuningLabel.text = text
+        tuning.isHidden = false
+        tuning.alpha = 1
+        view.bringSubviewToFront(tuning)
+        view.bringSubviewToFront(gear)
+    }
+
+    func hideTuning() {
+        guard !tuning.isHidden else { return }
+        UIView.animate(withDuration: 0.3, animations: { self.tuning.alpha = 0 }) { _ in self.tuning.isHidden = true }
+        flashGear()
+    }
+
+    func flashGear() {
+        guard setup.isHidden else { return }
+        view.bringSubviewToFront(gear)
+        UIView.animate(withDuration: 0.2) { self.gear.alpha = 1 }
+        gearTimer?.invalidate()
+        gearTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
+            UIView.animate(withDuration: 0.4) { self?.gear.alpha = 0 }
+        }
+    }
+
+    @objc func screenTapped() { flashGear() }
+    @objc func gearTapped() { showMenu(from: gear) }
+    @objc func changeAddress() {
+        tuning.isHidden = true
+        showSetup("Change address", "Type your NAS's address (your home one, or its Tailscale address), or let the app look for it.")
+    }
+
+    // our taps and holds work alongside the cable box's own touch handling
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.hideTuning() }
     }
 
     /// The phone's own address on Wi-Fi, like 192.168.1.23
@@ -387,10 +497,15 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
         if !web.isHidden && web.url == nil { open(current.isEmpty ? saved : current) }
     }
 
-    // ------------------------------------------------------------ menu (hold two fingers)
+    // ------------------------------------------------------------ menu (the ⚙ button, or hold two fingers)
 
     @objc func menuGesture(_ g: UILongPressGestureRecognizer) {
-        guard g.state == .began, presentedViewController == nil else { return }
+        guard g.state == .began else { return }
+        showMenu(from: view, at: g.location(in: view))
+    }
+
+    func showMenu(from source: UIView, at point: CGPoint? = nil) {
+        guard presentedViewController == nil else { return }
         let sheet = UIAlertController(title: appName, message: current.isEmpty ? nil : "Connected to \(current)", preferredStyle: .actionSheet)
         sheet.addAction(UIAlertAction(title: "Reload", style: .default) { [weak self] _ in
             guard let s = self else { return }
@@ -400,12 +515,12 @@ final class MainViewController: UIViewController, WKNavigationDelegate, WKUIDele
             sheet.addAction(UIAlertAction(title: "AirPlay to a TV…", style: .default) { [weak self] _ in self?.showAirPlay() })
         }
         sheet.addAction(UIAlertAction(title: "Change address", style: .default) { [weak self] _ in
-            self?.showSetup("Change address", "Type your NAS's address, or let the app look for it.")
+            self?.changeAddress()
         })
         sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         if let pop = sheet.popoverPresentationController {           // iPad
-            pop.sourceView = view
-            pop.sourceRect = CGRect(origin: g.location(in: view), size: .zero)
+            pop.sourceView = source
+            pop.sourceRect = point.map { CGRect(origin: $0, size: .zero) } ?? source.bounds
         }
         present(sheet, animated: true)
     }

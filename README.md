@@ -7,7 +7,7 @@ Two apps:
 
 Both find KNAS on your home Wi-Fi by themselves the first time (or type your NAS's address).
 Away from home, they use Tailscale by themselves if it's on (KNAS tells the apps its Tailscale address while you're home). Otherwise they say you're away and reconnect when you get back.
-Hold **two fingers** on the screen for a second to open the menu: reload, change address, AirPlay.
+Tap the screen and a ⚙ button shows in the top corner for a few seconds (or hold two fingers on the screen): reload, change address, AirPlay. While it's tuning in, a Change address button is right there too.
 
 ## Installing with AltStore
 
