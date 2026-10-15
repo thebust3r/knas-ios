@@ -38,7 +38,6 @@ targets:
         - _http._tcp
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
-          NSAllowsLocalNetworking: true
         CFBundleDisplayName: KNAS 42
         KNASMode: tv
     settings:
@@ -86,7 +85,6 @@ targets:
         - _http._tcp
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
-          NSAllowsLocalNetworking: true
         CFBundleDisplayName: KNAS Remote
         KNASMode: remote
     settings:
