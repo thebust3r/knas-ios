@@ -1,0 +1,74 @@
+{
+  "name": "KNAS 42",
+  "identifier": "io.github.thebust3r.knas42.source",
+  "subtitle": "The KNAS 42 iPhone apps",
+  "description": "Test builds of the KNAS 42 iPhone apps. New builds show up here by themselves.",
+  "iconURL": "https://raw.githubusercontent.com/thebust3r/knas-ios/main/ios/Shared/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
+  "website": "https://github.com/thebust3r/knas42",
+  "tintColor": "#ffd23a",
+  "apps": [
+    {
+      "name": "KNAS 42",
+      "bundleIdentifier": "io.github.thebust3r.knas42",
+      "developerName": "thebust3r",
+      "subtitle": "Your KNAS cable box, full screen",
+      "localizedDescription": "Your KNAS cable box, full screen: the guide, the weather channel, sports and your ErsatzTV channels. Keeps the screen on and can AirPlay to a TV.",
+      "iconURL": "https://raw.githubusercontent.com/thebust3r/knas-ios/main/ios/Shared/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
+      "tintColor": "#ffd23a",
+      "category": "entertainment",
+      "versions": [
+        {
+          "version": "1.1.5",
+          "buildVersion": "11",
+          "date": "2026-10-15T17:48:05Z",
+          "downloadURL": "https://github.com/thebust3r/knas-ios/releases/download/test-11/KNAS-42-iPhone-1.1.5.ipa",
+          "size": 412734,
+          "minOSVersion": "15.0",
+          "localizedDescription": "Test build 11"
+        }
+      ],
+      "version": "1.1.5",
+      "versionDate": "2026-10-15T17:48:05Z",
+      "downloadURL": "https://github.com/thebust3r/knas-ios/releases/download/test-11/KNAS-42-iPhone-1.1.5.ipa",
+      "size": 412734,
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "KNAS looks for your KNAS server on your home network."
+        }
+      }
+    },
+    {
+      "name": "KNAS Remote",
+      "bundleIdentifier": "io.github.thebust3r.knas42.remote",
+      "developerName": "thebust3r",
+      "subtitle": "A remote for every TV running KNAS",
+      "localizedDescription": "A remote for every TV running KNAS: channels, guide, volume, number pad, what's on, and turn off all TVs.",
+      "iconURL": "https://raw.githubusercontent.com/thebust3r/knas-ios/main/ios/Shared/Assets.xcassets/RemoteIcon.appiconset/icon-1024.png",
+      "tintColor": "#ffd23a",
+      "category": "entertainment",
+      "versions": [
+        {
+          "version": "1.1.5",
+          "buildVersion": "11",
+          "date": "2026-10-15T17:48:05Z",
+          "downloadURL": "https://github.com/thebust3r/knas-ios/releases/download/test-11/KNAS-Remote-iPhone-1.1.5.ipa",
+          "size": 1241043,
+          "minOSVersion": "15.0",
+          "localizedDescription": "Test build 11"
+        }
+      ],
+      "version": "1.1.5",
+      "versionDate": "2026-10-15T17:48:05Z",
+      "downloadURL": "https://github.com/thebust3r/knas-ios/releases/download/test-11/KNAS-Remote-iPhone-1.1.5.ipa",
+      "size": 1241043,
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "KNAS looks for your KNAS server on your home network."
+        }
+      }
+    }
+  ],
+  "news": []
+}
