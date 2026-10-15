@@ -8,7 +8,8 @@ targets:
     type: application
     platform: iOS
     sources:
-    - Sources
+    - Watch
+    - Shared
     info:
       path: Config/KNAS42-Info.plist
       properties:
@@ -57,7 +58,8 @@ targets:
     type: application
     platform: iOS
     sources:
-    - Sources
+    - Remote
+    - Shared
     info:
       path: Config/KNASRemote-Info.plist
       properties:
@@ -78,8 +80,8 @@ targets:
         - UIInterfaceOrientationPortraitUpsideDown
         - UIInterfaceOrientationLandscapeLeft
         - UIInterfaceOrientationLandscapeRight
-        NSLocalNetworkUsageDescription: KNAS 42 looks for your KNAS server on your
-          home network.
+        NSLocalNetworkUsageDescription: KNAS Remote looks for your KNAS server on
+          your home network.
         NSBonjourServices:
         - _http._tcp
         NSAppTransportSecurity:

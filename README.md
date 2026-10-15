@@ -3,7 +3,7 @@
 Two apps:
 
 - **KNAS 42**: watch the cable box full screen. Keeps the screen on, plays sound with the silent switch on, and can AirPlay to a TV.
-- **KNAS Remote**: the phone remote and menu.
+- **KNAS Remote**: a native remote: TV picker, D-pad, channel and volume rockers, number pad, What's On list, Turn off all TVs, and everything else from the phone page under More.
 
 Both find KNAS on your home Wi-Fi by themselves the first time (or type your NAS's address).
 Hold **two fingers** on the screen for a second to open the menu: reload, change address, AirPlay.
