@@ -1,0 +1,67 @@
+# Builds the two iPhone/iPad apps (KNAS 42 to watch, KNAS Remote) on a Mac, unsigned.
+# AltStore (or Sideloadly) signs them with your own Apple ID when you install them.
+name: iPhone apps
+
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios-apps.yml", "app/server.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        run: |
+          v=1.0.0
+          [ -f app/server.py ] && v=$(sed -n 's/^VERSION = "\([0-9.]*\)".*/\1/p' app/server.py | head -1)
+          [ -f ios/VERSION ] && v=$(tr -d ' \n' < ios/VERSION)
+          sed -i '' "s/MARKETING_VERSION: .*/MARKETING_VERSION: '$v'/; s/CURRENT_PROJECT_VERSION: .*/CURRENT_PROJECT_VERSION: '${{ github.run_number }}'/" ios/project.yml
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Make the Xcode project
+        run: |
+          brew install xcodegen >/dev/null
+          cd ios && xcodegen generate
+
+      - name: Build
+        run: |
+          cd ios
+          set -o pipefail
+          for t in KNAS42 KNASRemote; do
+            xcodebuild -project KNAS42.xcodeproj -target "$t" -configuration Release -sdk iphoneos \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" SYMROOT="$PWD/build" build 2>&1 | tee -a build.log | grep -E "error:|warning: .*deprecated|BUILD" || true
+            [ -d "build/Release-iphoneos/$t.app" ] || {
+              grep -E "error:" build.log | head -25 | while read -r l; do echo "::error::${l//$PWD/}"; done
+              exit 1; }
+          done
+
+      - name: Pack the apps
+        run: |
+          v=${{ steps.v.outputs.version }}
+          mkdir -p dist
+          for pair in "KNAS42:KNAS-42-iPhone" "KNASRemote:KNAS-Remote-iPhone"; do
+            t=${pair%%:*}; n=${pair##*:}
+            rm -rf Payload && mkdir Payload && cp -R "ios/build/Release-iphoneos/$t.app" Payload/
+            zip -qry "dist/$n-$v.ipa" Payload
+          done
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KNAS-iPhone-apps
+          path: dist/*.ipa
+
+      - name: Publish a test release (test repo only)
+        if: github.event.repository.name == 'knas-ios'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "test-${{ github.run_number }}" dist/*.ipa --repo "$GITHUB_REPOSITORY" \
+            --title "iPhone test build ${{ github.run_number }}" --notes "Test build. Install both .ipa files with AltStore (see the README)." --latest

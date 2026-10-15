@@ -1,0 +1,102 @@
+name: KNAS42
+options:
+  bundleIdPrefix: io.github.thebust3r
+  deploymentTarget:
+    iOS: '15.0'
+targets:
+  KNAS42:
+    type: application
+    platform: iOS
+    sources:
+    - Sources
+    info:
+      path: Config/KNAS42-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: ''
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: true
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+        - UIInterfaceOrientationPortrait
+        - UIInterfaceOrientationLandscapeLeft
+        - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+        - UIInterfaceOrientationPortrait
+        - UIInterfaceOrientationPortraitUpsideDown
+        - UIInterfaceOrientationLandscapeLeft
+        - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+        - audio
+        NSLocalNetworkUsageDescription: KNAS 42 looks for your KNAS server on your
+          home network.
+        NSBonjourServices:
+        - _http._tcp
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        CFBundleDisplayName: KNAS 42
+        KNASMode: tv
+    settings:
+      base:
+        MARKETING_VERSION: 1.1.5
+        CURRENT_PROJECT_VERSION: '1'
+        TARGETED_DEVICE_FAMILY: 1,2
+        SWIFT_VERSION: '5.0'
+        CODE_SIGNING_ALLOWED: 'NO'
+        CODE_SIGNING_REQUIRED: 'NO'
+        CODE_SIGN_IDENTITY: ''
+        ENABLE_BITCODE: 'NO'
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.thebust3r.knas42
+        PRODUCT_NAME: KNAS42
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  KNASRemote:
+    type: application
+    platform: iOS
+    sources:
+    - Sources
+    info:
+      path: Config/KNASRemote-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: ''
+        UIRequiresFullScreen: false
+        UIStatusBarHidden: false
+        UIViewControllerBasedStatusBarAppearance: true
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+        - UIInterfaceOrientationPortrait
+        - UIInterfaceOrientationLandscapeLeft
+        - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+        - UIInterfaceOrientationPortrait
+        - UIInterfaceOrientationPortraitUpsideDown
+        - UIInterfaceOrientationLandscapeLeft
+        - UIInterfaceOrientationLandscapeRight
+        NSLocalNetworkUsageDescription: KNAS 42 looks for your KNAS server on your
+          home network.
+        NSBonjourServices:
+        - _http._tcp
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        CFBundleDisplayName: KNAS Remote
+        KNASMode: remote
+    settings:
+      base:
+        MARKETING_VERSION: 1.1.5
+        CURRENT_PROJECT_VERSION: '1'
+        TARGETED_DEVICE_FAMILY: 1,2
+        SWIFT_VERSION: '5.0'
+        CODE_SIGNING_ALLOWED: 'NO'
+        CODE_SIGNING_REQUIRED: 'NO'
+        CODE_SIGN_IDENTITY: ''
+        ENABLE_BITCODE: 'NO'
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.thebust3r.knas42.remote
+        PRODUCT_NAME: KNASRemote
+        ASSETCATALOG_COMPILER_APPICON_NAME: RemoteIcon
